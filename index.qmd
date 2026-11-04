@@ -1,0 +1,648 @@
+---
+title: "Análisis del tráfico de red y detección de intrusiones"
+subtitle: "Trabajo de Pandas - 2.º ASIR"
+author: "Mateo Castellanos Romero, Jose Manuel Lopez Rabadán y Gonzalo Guzmán Chapoñan"
+lang: es
+
+format:
+  html:
+    theme: cosmo
+    toc: true
+    toc-depth: 3
+    number-sections: true
+    code-fold: true
+    code-summary: "Mostrar código"
+
+execute:
+  echo: true
+  warning: false
+  message: false
+---
+
+# Introducción
+
+La seguridad de las redes es una parte importante de la administración de sistemas. Los ordenadores, servidores y otros dispositivos se comunican continuamente y generan conexiones. La mayoría de estas comunicaciones son normales, pero algunas pueden estar relacionadas con errores o actividades sospechosas.
+Por este motivo, un administrador de sistemas necesita conocer el tráfico de la red y disponer de información que le ayude a detectar comportamientos poco habituales. El análisis de datos permite resumir muchos registros y localizar aquellos que conviene revisar con más detalle.
+En este proyecto utilizamos **Python y Pandas** para cargar, limpiar, explorar y analizar un conjunto de datos de detección de intrusiones descargado de Kaggle. Para representar los resultados empleamos Matplotlib, Seaborn y Plotly.
+El trabajo tiene un objetivo didáctico. No estamos desarrollando un sistema que bloquee ataques automáticamente, sino practicando el tratamiento de datos y aprendiendo a interpretar los resultados desde el punto de vista de un administrador de sistemas.
+
+## Objetivos
+
+Los objetivos principales del trabajo son:
+
+- Cargar los archivos CSV y conocer su estructura.
+- Revisar los tipos de datos, los valores nulos y los registros duplicados.
+- Preparar algunas columnas para facilitar los cálculos.
+- Comparar conexiones normales con conexiones etiquetadas como anómalas.
+- Analizar protocolos, servicios y estados de conexión.
+- Utilizar `concat()`, `groupby()`, `pivot_table()`, `loc` e `iloc`.
+- Crear gráficos estáticos y un gráfico interactivo.
+- Proponer medidas básicas que podría aplicar un administrador de sistemas.
+
+## Preguntas que queremos responder
+
+Durante el análisis intentaremos responder a las siguientes preguntas:
+
+1. ¿Cuántas conexiones aparecen clasificadas como normales y cuántas como anómalas?
+2. ¿Qué duración y volumen de datos tienen las conexiones?
+3. ¿Qué protocolos presentan una mayor proporción de registros anómalos?
+4. ¿Qué servicios acumulan más conexiones de cada tipo?
+5. ¿Existen conexiones que conviene revisar por su volumen de datos o por sus intentos fallidos de inicio de sesión?
+6. ¿Qué medidas podría proponer un administrador a partir de estos resultados?
+Estas preguntas nos sirven para decidir qué operaciones de Pandas y qué gráficos vamos a utilizar.
+
+# Descripción del conjunto de datos
+
+El conjunto de datos utilizado es [Network Intrusion Detection de Kaggle](https://www.kaggle.com/datasets/sampadab17/network-intrusion-detection). Contiene registros que describen conexiones de red y diferentes características de cada conexión.
+En los archivos que hemos utilizado, el conjunto de entrenamiento tiene **25.192 filas y 42 columnas**. El conjunto de prueba tiene **22.544 filas y 41 columnas**. El archivo de entrenamiento incluye la columna `class`, mientras que el archivo de prueba no dispone de esa etiqueta.
+
+## ¿Qué representa cada fila?
+
+Cada fila representa una conexión de red descrita mediante varias características. Algunas columnas indican la duración de la conexión o la cantidad de datos transferidos. Otras identifican el protocolo, el servicio o el estado de la comunicación.
+El archivo de entrenamiento incluye una columna llamada `class`, que permite distinguir las conexiones etiquetadas como `normal` de las etiquetadas como `anomaly`. En este informe las presentamos como **Normal** y **Anómalo** para que las tablas y los gráficos sean más fáciles de leer.
+
+## Columnas principales
+
+No vamos a estudiar las 42 columnas con el mismo detalle. Nos centraremos en las que sirven para explicar mejor el comportamiento de las conexiones.
+
+| Columna | Significado | Utilidad en el trabajo |
+|---|---|---|
+| `duration` | Duración de la conexión en segundos. | Localizar conexiones muy largas. |
+| `protocol_type` | Protocolo utilizado, como TCP, UDP o ICMP. | Comparar el tráfico por protocolo. |
+| `service` | Servicio al que se dirige la conexión. | Revisar servicios con actividad anómala. |
+| `flag` | Estado o indicador final de la conexión. | Estudiar conexiones aceptadas o rechazadas. |
+| `src_bytes` | Bytes enviados desde el origen. | Medir los datos enviados. |
+| `dst_bytes` | Bytes enviados desde el destino. | Medir los datos recibidos. |
+| `serror_rate` | Proporción de conexiones relacionadas con errores SYN. | Revisar fallos de conexión. |
+| `rerror_rate` | Proporción de conexiones relacionadas con errores REJ. | Revisar rechazos de conexión. |
+| `num_failed_logins` | Número de intentos fallidos de inicio de sesión. | Revisar posibles problemas de autenticación. |
+| `logged_in` | Indica si se inició sesión correctamente. | Comparar conexiones con y sin inicio de sesión. |
+| `class` | Etiqueta del conjunto de entrenamiento. | Comparar tráfico normal y anómalo. |
+Existen otras columnas relacionadas con recuentos de conexiones, accesos y tasas de error. Las utilizaremos cuando aporten información a una consulta concreta, pero no es necesario explicar las 42 variables una por una.
+
+## Relación con la Administración de Sistemas
+
+Un administrador puede utilizar información de este tipo para conocer qué protocolos se utilizan, comprobar qué servicios reciben conexiones y localizar comportamientos diferentes de los habituales.
+Por ejemplo, muchas conexiones rechazadas podrían indicar un problema de configuración o intentos de acceso no válidos. Un volumen de datos elevado podría ser normal en una descarga, pero también puede justificar una comprobación si no corresponde con la actividad esperada.
+Por tanto, los datos sirven como una ayuda para investigar. No debemos interpretar una sola característica como una prueba definitiva de que se ha producido un ataque.
+
+# Carga de los datos
+
+Guardamos los dos archivos descargados de Kaggle dentro de la carpeta `data/`. Los nombres que utiliza el código son `Train_data.csv` y `Test_data.csv`.
+Primero importamos las librerías. Pandas permite trabajar con tablas, NumPy facilita algunas operaciones numéricas, Matplotlib y Seaborn sirven para crear gráficos estáticos y Plotly permite crear gráficos interactivos.
+
+```{python}
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+import plotly.express as px
+from pathlib import Path
+from IPython.display import display
+
+# Indicamos la ubicación de los dos archivos.
+archivo_train = Path("data/Train_data.csv")
+archivo_test = Path("data/Test_data.csv")
+
+# Comprobamos que los archivos existen antes de cargarlos.
+if not archivo_train.exists() or not archivo_test.exists():
+    raise FileNotFoundError(
+        "Coloca Train_data.csv y Test_data.csv dentro de la carpeta data/."
+    )
+
+# Leemos los archivos CSV.
+train = pd.read_csv(archivo_train, low_memory=False)
+test = pd.read_csv(archivo_test, low_memory=False)
+
+# Normalizamos los nombres de las columnas.
+train.columns = train.columns.str.strip().str.lower()
+test.columns = test.columns.str.strip().str.lower()
+print("Tamaño del entrenamiento:", train.shape)
+print("Tamaño de prueba:", test.shape)
+display(train.head())
+```
+El atributo `shape` muestra el número de filas y columnas. El método `head()` enseña las primeras cinco filas. Con estas comprobaciones podemos confirmar que los CSV se han cargado y observar cómo están organizados.
+
+## Comprobar los nombres de las columnas
+
+Antes de realizar consultas es importante saber cómo se llaman las variables. Utilizamos `columns.tolist()` para ver todos los nombres.
+
+```{python}
+print("Columnas del entrenamiento:")
+print(train.columns.tolist())
+print("Columnas del conjunto de prueba:")
+print(test.columns.tolist())
+```
+Observamos que el archivo de entrenamiento tiene 42 columnas y el de prueba tiene 41. La diferencia es que el archivo de prueba no contiene `class`. Por eso, las comparaciones entre Normal y Anómalo se harán con los registros etiquetados del entrenamiento.
+
+## Consultar los últimos registros
+
+Además de `head()`, Pandas dispone de `tail()`, que muestra las últimas filas. Es otra comprobación sencilla para conocer el contenido del archivo.
+
+```{python}
+display(train.tail())
+```
+
+# Limpieza y preparación de los datos
+
+Antes de calcular estadísticas o crear gráficos debemos revisar la calidad de los datos. Si existen valores nulos, tipos incorrectos o registros repetidos, los resultados pueden verse afectados.
+
+## Revisar los tipos de datos
+
+Utilizamos `info()` para consultar el número de registros, las columnas, los tipos de datos y los valores no nulos.
+
+```{python}
+train.info()
+```
+En nuestro conjunto aparecen variables numéricas, como `duration` y `src_bytes`, y variables de texto, como `protocol_type`, `service` y `class`. Esta diferencia es importante porque no podemos realizar las mismas operaciones con todas las columnas.
+
+## Comprobar los valores nulos
+
+Un valor nulo representa un dato que falta. Con `isnull().sum()` contamos los valores nulos de cada columna.
+
+```{python}
+nulos = train.isnull().sum()
+print("Total de valores nulos:", nulos.sum())
+display(nulos[nulos > 0])
+```
+En los archivos utilizados para este trabajo no aparecen valores nulos en el conjunto de entrenamiento. Aun así, mantenemos esta comprobación porque es una práctica habitual al trabajar con cualquier dataset.
+No sustituimos valores automáticamente. Si encontrásemos datos ausentes, primero habría que estudiar qué columna está afectada y decidir si conviene eliminar esas filas o utilizar otro método.
+
+## Comprobar los registros duplicados
+
+Los registros duplicados son filas que aparecen más de una vez con los mismos valores. Podemos contarlos mediante `duplicated()`.
+
+```{python}
+duplicados = train.duplicated().sum()
+print("Registros duplicados:", duplicados)
+
+# Eliminamos duplicados si los hubiera.
+train = train.drop_duplicates().copy()
+print("Tamaño después de revisar duplicados:", train.shape)
+```
+En los archivos que hemos utilizado no se encuentran filas duplicadas. El método `drop_duplicates()` queda incluido para que el proceso también funcione si se utiliza otra versión de los datos.
+En una red real dos conexiones con características iguales podrían haberse producido legítimamente. Por eso, eliminar duplicados siempre debe ser una decisión razonada.
+
+## Revisar estadísticas iniciales
+
+Con `describe()` obtenemos un resumen de las variables numéricas: cantidad de valores, media, desviación típica, mínimo, máximo y cuartiles.
+
+```{python}
+display(train.describe())
+```
+La media es el promedio. La mediana corresponde al valor central cuando ordenamos los datos. Comparar ambas medidas ayuda a detectar distribuciones desequilibradas o valores muy elevados.
+
+## Crear una columna con los bytes totales
+
+Las columnas `src_bytes` y `dst_bytes` representan los bytes enviados desde el origen y desde el destino. Para facilitar el análisis, creamos una nueva columna llamada `bytes_total`.
+
+```{python}
+# Convertimos las columnas que vamos a utilizar a formato numérico.
+for columna in [
+    "duration", "src_bytes", "dst_bytes",
+    "serror_rate", "rerror_rate"
+]:
+    if columna in train.columns:
+        train[columna] = pd.to_numeric(train[columna], errors="coerce")
+if not {"src_bytes", "dst_bytes"}.issubset(train.columns):
+    raise ValueError("Faltan las columnas src_bytes o dst_bytes.")
+
+# Sumamos los bytes enviados y recibidos.
+train["bytes_total"] = train["src_bytes"] + train["dst_bytes"]
+display(train[["src_bytes", "dst_bytes", "bytes_total"]].head())
+```
+La variable `bytes_total` no aparece en el CSV original: la hemos calculado nosotros. Nos permite estudiar de forma más sencilla el volumen total transferido en cada conexión.
+
+## Preparar la etiqueta del tráfico
+
+La columna que contiene la etiqueta se llama `class` en los archivos utilizados. Comprobamos su contenido y creamos una columna más sencilla para las comparaciones.
+
+```{python}
+# Buscamos el nombre de la columna de etiqueta.
+posibles_etiquetas = ["class", "label", "attack", "target", "attack_type"]
+columna_etiqueta = next(
+    (c for c in posibles_etiquetas if c in train.columns), None
+)
+if columna_etiqueta is None:
+    raise ValueError("No se encuentra la columna que identifica el tipo de tráfico.")
+
+# Normalizamos el texto de las etiquetas.
+etiquetas = (
+    train[columna_etiqueta].astype("string")
+    .str.strip().str.lower().str.rstrip(".")
+)
+
+# Consideramos normal las etiquetas habituales de tráfico benigno.
+valores_normales = ["normal", "benign", "0", "false", "no_attack", "no attack"]
+train["tipo_trafico"] = "Anómalo"
+train.loc[etiquetas.isna(), "tipo_trafico"] = "Sin etiqueta"
+train.loc[etiquetas.isin(valores_normales), "tipo_trafico"] = "Normal"
+print("Columna utilizada:", columna_etiqueta)
+display(train["tipo_trafico"].value_counts())
+```
+Para simplificar el análisis agrupamos todas las etiquetas distintas de `normal` como tráfico anómalo. Así comparamos dos grupos, aunque dejamos de distinguir los diferentes tipos de ataque.
+Solo utilizaremos las filas etiquetadas como Normal o Anómalo para las comparaciones. De esta forma evitamos tratar como anómalas las filas que no tienen etiqueta.
+
+```{python}
+datos = train.loc[
+    train["tipo_trafico"].isin(["Normal", "Anómalo"])
+].copy()
+if datos.empty:
+    raise ValueError("No hay registros etiquetados como Normal o Anómalo.")
+datos["es_anomalo"] = datos["tipo_trafico"] == "Anómalo"
+print("Registros utilizados en el análisis:", len(datos))
+```
+
+# Exploración estadística (EDA)
+
+EDA significa *Exploratory Data Analysis*, o análisis exploratorio de datos. Es la fase en la que observamos las características principales del conjunto para entender qué información contiene antes de extraer conclusiones.
+En este apartado calculamos varios resúmenes estadísticos y estudiamos la distribución de diferentes variables.
+
+## Distribución del tráfico normal y anómalo
+
+Primero contamos cuántas conexiones hay de cada tipo. Después calculamos qué porcentaje representa cada grupo sobre el total.
+
+```{python}
+conteo_trafico = datos["tipo_trafico"].value_counts()
+porcentaje_trafico = datos["tipo_trafico"].value_counts(normalize=True) * 100
+resumen_trafico = pd.DataFrame({
+    "Conexiones": conteo_trafico,
+    "Porcentaje (%)": porcentaje_trafico.round(2)
+})
+display(resumen_trafico)
+```
+En los archivos utilizados aparecen **13.449 conexiones normales** y **11.743 conexiones anómalas**. Esto representa aproximadamente un 53,39 % de tráfico normal y un 46,61 % de tráfico anómalo.
+La distribución está relativamente repartida entre las dos clases. Es útil para comparar ambos grupos, aunque no significa que esas proporciones se vayan a repetir en una red real.
+
+## Duración de las conexiones
+
+La duración permite conocer cuánto tiempo permanece activa cada conexión. Calculamos estadísticas generales y algunos percentiles para conocer mejor los valores altos.
+
+```{python}
+estadisticas_duracion = datos["duration"].describe(
+    percentiles=[0.50, 0.90, 0.95, 0.99]
+)
+display(estadisticas_duracion)
+```
+En este conjunto, la mediana de duración es 0 segundos y el percentil 95 es 5 segundos. Esto significa que muchas conexiones tienen una duración muy corta. También aparecen algunas conexiones con una duración mucho mayor.
+La media puede verse afectada por esos valores extremos. Por eso es conveniente observar también la mediana y los percentiles, y no interpretar únicamente el promedio.
+
+## Volumen de datos transferidos
+
+Ahora realizamos el mismo análisis sobre `bytes_total`, la columna que hemos creado sumando los bytes de origen y destino.
+
+```{python}
+estadisticas_bytes = datos["bytes_total"].describe(
+    percentiles=[0.50, 0.90, 0.95, 0.99]
+)
+display(estadisticas_bytes)
+```
+La mediana del volumen total es de **118 bytes**, mientras que existen registros con volúmenes mucho más elevados. Esto muestra que la distribución tiene algunos valores extremos.
+Un administrador podría revisar esas conexiones para comprobar si el volumen es normal para el servicio utilizado. Un valor alto, por sí solo, no demuestra una fuga de información ni un ataque.
+
+## Errores de conexión
+
+La variable `serror_rate` representa una tasa relacionada con errores SYN. Estudiarla puede ayudar a identificar conexiones con un comportamiento distinto.
+
+```{python}
+display(datos["serror_rate"].describe())
+```
+La tasa se expresa entre 0 y 1. Un valor cercano a 1 indica una proporción elevada de errores de este tipo en el contexto del dataset.
+No conviene interpretar esta columna de forma aislada. Hay que compararla con el protocolo, el servicio y el resto de características de la conexión.
+
+## Comparación de métricas por tipo de tráfico
+
+Utilizamos `groupby()` para comparar la duración media, los bytes medios y la tasa de error entre conexiones normales y anómalas.
+
+```{python}
+comparacion_clases = datos.groupby("tipo_trafico").agg(
+    conexiones=("tipo_trafico", "size"),
+    duracion_media=("duration", "mean"),
+    bytes_medios=("bytes_total", "mean"),
+    serror_medio=("serror_rate", "mean")
+)
+display(comparacion_clases.round(2))
+```
+La tabla resume varias características según el tipo de tráfico. Si una métrica presenta diferencias entre los dos grupos, puede servir para estudiar qué comportamientos aparecen con más frecuencia en los registros anómalos.
+La tabla no demuestra que una variable sea la causa de un ataque. Solo muestra diferencias dentro de este conjunto de datos.
+
+## Protocolos más utilizados
+
+Con `value_counts()` contamos las conexiones de cada protocolo.
+
+```{python}
+conteo_protocolos = datos["protocol_type"].value_counts()
+display(conteo_protocolos)
+```
+En este dataset aparecen TCP, UDP e ICMP. Conocer su distribución ayuda a entender qué tipos de comunicación tienen más presencia en el conjunto.
+TCP se utiliza en muchos servicios que necesitan establecer una conexión. UDP se utiliza en comunicaciones que no siguen el mismo mecanismo de conexión, e ICMP se utiliza en mensajes de control y diagnóstico de red.
+
+# Análisis avanzado con Pandas
+
+En esta sección utilizamos las operaciones que solicita el profesor. Cada consulta responde a una pregunta práctica desde el punto de vista de la administración de sistemas.
+
+## Unir los archivos con `concat()`
+
+El conjunto tiene un archivo de entrenamiento y otro de prueba. Vamos a unirlos verticalmente con `concat()` y añadiremos una columna para conservar la procedencia de cada fila.
+
+```{python}
+train_concat = train.copy()
+test_concat = test.copy()
+train_concat["origen_datos"] = "Entrenamiento"
+test_concat["origen_datos"] = "Prueba"
+datos_combinados = pd.concat(
+    [train_concat, test_concat],
+    ignore_index=True,
+    sort=False
+)
+print("Filas del conjunto combinado:", datos_combinados.shape[0])
+print("Columnas del conjunto combinado:", datos_combinados.shape[1])
+display(datos_combinados["origen_datos"].value_counts())
+```
+`concat()` coloca las filas de un archivo debajo de las filas del otro. Como el archivo de prueba no contiene la columna `class`, Pandas crea esa columna en el resultado y deja valores nulos en las filas que proceden del archivo de prueba.
+Por eso, para comparar Normal y Anómalo utilizamos únicamente los registros etiquetados del entrenamiento. No debemos interpretar las filas sin etiqueta como tráfico anómalo.
+
+## Agrupar por protocolo con `groupby()`
+
+La primera pregunta es: ¿qué protocolos presentan una mayor proporción de conexiones anómalas?
+
+```{python}
+resumen_protocolos = datos.groupby("protocol_type").agg(
+    total_conexiones=("tipo_trafico", "size"),
+    conexiones_anomalas=("es_anomalo", "sum"),
+    porcentaje_anomalias=("es_anomalo", "mean"),
+    bytes_medios=("bytes_total", "mean")
+)
+resumen_protocolos["porcentaje_anomalias"] = (
+    resumen_protocolos["porcentaje_anomalias"] * 100
+).round(2)
+display(resumen_protocolos.sort_values(
+    "porcentaje_anomalias", ascending=False
+))
+```
+En los datos analizados, ICMP presenta una proporción de anomalías aproximada del **84,23 %**, TCP del **47,96 %** y UDP del **16,74 %**.
+Esta información puede ayudar a decidir qué protocolos conviene revisar con más detalle. Es importante comparar porcentajes y no solo cantidades, porque un protocolo puede acumular más conexiones anómalas simplemente porque también tiene más conexiones en total.
+
+## Agrupar por estado de conexión
+
+La columna `flag` indica el estado o resultado de la conexión. Vamos a comprobar qué estados aparecen con más frecuencia y qué proporción de sus registros está etiquetada como anómala.
+
+```{python}
+resumen_flags = datos.groupby("flag").agg(
+    total_conexiones=("tipo_trafico", "size"),
+    conexiones_anomalas=("es_anomalo", "sum"),
+    porcentaje_anomalias=("es_anomalo", "mean")
+)
+resumen_flags["porcentaje_anomalias"] = (
+    resumen_flags["porcentaje_anomalias"] * 100
+).round(2)
+display(resumen_flags.sort_values(
+    "total_conexiones", ascending=False
+).head(12))
+```
+Esta agrupación permite estudiar los estados más frecuentes. Por ejemplo, un administrador podría revisar si existen muchos rechazos o conexiones que no llegan a establecerse correctamente.
+No todos los estados de error significan que haya un ataque. También pueden aparecer por problemas de red, servicios apagados o configuraciones incorrectas.
+
+## Tabla dinámica con `pivot_table()`
+
+La tabla dinámica cruza dos variables. En nuestro caso, queremos comparar los servicios con el tipo de tráfico.
+Primero añadimos una columna auxiliar que vale 1 para cada conexión. Después utilizamos `pivot_table()` para sumar esos valores y obtener el número de conexiones.
+
+```{python}
+datos["numero_conexiones"] = 1
+tabla_servicios = pd.pivot_table(
+    datos,
+    index="service",
+    columns="tipo_trafico",
+    values="numero_conexiones",
+    aggfunc="sum",
+    fill_value=0
+)
+display(tabla_servicios.head(15))
+```
+Las filas representan los servicios y las columnas representan el tipo de tráfico. Así podemos comparar cuántas conexiones normales y anómalas aparecen para cada servicio.
+Para ordenar los servicios por el número de conexiones anómalas hacemos lo siguiente:
+
+```{python}
+servicios_ordenados = tabla_servicios.sort_values(
+    "Anómalo", ascending=False
+)
+display(servicios_ordenados.head(10))
+```
+En los datos analizados, el servicio `private` acumula **4.152 conexiones anómalas**. También aparecen servicios como `eco_i` y `ecr_i` con bastantes registros anómalos.
+Desde el punto de vista de un administrador, esta información permite priorizar la revisión de determinados servicios. No significa que deban bloquearse automáticamente: primero habría que comprobar si su uso es necesario y esperado.
+
+## Filtrado avanzado con `loc()`
+
+Vamos a localizar conexiones anómalas cuyo volumen total de datos se encuentra entre el 5 % más alto del conjunto. Para ello calculamos el percentil 95 y lo utilizamos como umbral.
+
+```{python}
+umbral_bytes = datos["bytes_total"].quantile(0.95)
+condicion = (
+    (datos["tipo_trafico"] == "Anómalo") &
+    (datos["bytes_total"] >= umbral_bytes)
+)
+columnas_mostrar = [
+    c for c in ["protocol_type", "service", "duration",
+                "bytes_total", "tipo_trafico"]
+    if c in datos.columns
+]
+conexiones_sospechosas = datos.loc[condicion, columnas_mostrar]
+print("Umbral del percentil 95:", round(umbral_bytes, 2))
+print("Conexiones seleccionadas:", len(conexiones_sospechosas))
+display(conexiones_sospechosas.head(10))
+```
+`loc()` permite seleccionar filas mediante condiciones y elegir las columnas que queremos mostrar. En este caso seleccionamos registros clasificados como anómalos y con un volumen de datos elevado.
+Estos registros serían candidatos a una revisión adicional. El filtro no demuestra por sí solo que exista una intrusión.
+
+## Buscar intentos fallidos de inicio de sesión
+
+La columna `num_failed_logins` recoge el número de intentos fallidos de inicio de sesión. Vamos a localizar las conexiones en las que este contador es mayor que cero.
+
+```{python}
+intentos_fallidos = datos.loc[
+    datos["num_failed_logins"] > 0,
+    ["num_failed_logins", "logged_in", "protocol_type",
+     "service", "tipo_trafico"]
+]
+print("Conexiones con intentos fallidos:", len(intentos_fallidos))
+display(intentos_fallidos.head(10))
+```
+En los archivos utilizados aparecen **23 conexiones** con uno o más intentos fallidos. Es un número pequeño dentro del total de registros, pero la variable es interesante para revisar problemas de autenticación.
+Un administrador podría contrastar estos casos con los registros de acceso del servidor. Un intento fallido aislado puede ser un error de un usuario; varios intentos repetidos pueden justificar una investigación.
+
+## Selección por posición con `iloc()`
+
+A diferencia de `loc()`, que permite filtrar mediante condiciones o etiquetas, `iloc()` selecciona filas y columnas por su posición numérica.
+En este ejemplo mostramos las diez primeras filas y las seis primeras columnas.
+
+```{python}
+display(train.iloc[:10, :6])
+```
+Es una operación sencilla, pero resulta útil para inspeccionar partes de una tabla cuando conocemos la posición de los datos que queremos consultar.
+
+# Visualización de resultados
+
+Los gráficos ayudan a entender los resultados de forma más rápida que observando únicamente las tablas. En este apartado creamos tres gráficos estáticos y uno interactivo.
+
+## Gráfico de conexiones normales y anómalas
+
+El primer gráfico muestra cuántas conexiones pertenecen a cada categoría.
+
+```{python}
+colores = {"Normal": "#4C78A8", "Anómalo": "#E45756"}
+colores_grafico = [colores.get(tipo, "#888888") for tipo in conteo_trafico.index]
+plt.figure(figsize=(7, 4))
+conteo_trafico.plot(kind="bar", color=colores_grafico)
+plt.title("Conexiones normales y anómalas")
+plt.xlabel("Tipo de tráfico")
+plt.ylabel("Número de conexiones")
+plt.xticks(rotation=0)
+plt.tight_layout()
+plt.show()
+```
+El gráfico permite comparar visualmente las dos clases. En nuestro conjunto las conexiones normales son algo más numerosas que las anómalas, pero ambas tienen una presencia importante.
+Desde la administración de sistemas, este resultado sirve como resumen inicial del conjunto analizado. No debe interpretarse como el porcentaje de ataques que tendría cualquier red real.
+
+## Mapa de calor de servicios y tipo de tráfico
+
+El segundo gráfico representa la tabla dinámica anterior. Utilizamos los diez servicios con más conexiones anómalas para que la visualización sea fácil de leer.
+
+```{python}
+servicios_grafico = tabla_servicios.sort_values(
+    "Anómalo", ascending=False
+).head(10)
+plt.figure(figsize=(9, 5))
+sns.heatmap(
+    servicios_grafico,
+    annot=True,
+    fmt="g",
+    cmap="Reds"
+)
+plt.title("Conexiones por servicio y tipo de tráfico")
+plt.xlabel("Tipo de tráfico")
+plt.ylabel("Servicio")
+plt.tight_layout()
+plt.show()
+```
+Los colores más intensos representan cantidades más altas. El gráfico permite detectar qué servicios concentran más conexiones anómalas y comparar esas cantidades con el tráfico normal.
+Hay que tener en cuenta que el mapa muestra cantidades absolutas. Para comparar el nivel de anomalías entre servicios también debemos tener en cuenta el total de conexiones de cada uno.
+
+## Porcentaje de anomalías por protocolo
+
+Este gráfico utiliza el resultado del `groupby()` para comparar porcentajes y no solo cantidades.
+
+```{python}
+plt.figure(figsize=(7, 4))
+resumen_protocolos["porcentaje_anomalias"].sort_values(
+    ascending=False
+).plot(kind="bar", color="#E45756")
+plt.title("Porcentaje de conexiones anómalas por protocolo")
+plt.xlabel("Protocolo")
+plt.ylabel("Conexiones anómalas (%)")
+plt.xticks(rotation=0)
+plt.ylim(0, 100)
+plt.tight_layout()
+plt.show()
+```
+El gráfico muestra la proporción de conexiones anómalas dentro de cada protocolo. En este conjunto ICMP tiene el porcentaje más alto, seguido de TCP y UDP.
+Esta comparación ayuda a priorizar una revisión, aunque no basta para decidir que un protocolo sea inseguro. La actividad esperada de la red y los servicios utilizados también son importantes.
+
+## Gráfico interactivo con Plotly
+
+Por último, utilizamos Plotly para representar la relación entre la duración y el volumen total de las conexiones. Al pasar el ratón por los puntos podemos consultar información adicional de cada registro.
+
+```{python}
+muestra = datos.sample(min(3000, len(datos)), random_state=42)
+columnas_extra = [
+    c for c in ["protocol_type", "service", "flag"]
+    if c in muestra.columns
+]
+fig = px.scatter(
+    muestra,
+    x="duration",
+    y="bytes_total",
+    color="tipo_trafico",
+    hover_data=columnas_extra,
+    title="Duración y volumen de las conexiones",
+    labels={
+        "duration": "Duración (segundos)",
+        "bytes_total": "Bytes transferidos",
+        "tipo_trafico": "Tipo de tráfico"
+    }
+)
+fig.show()
+```
+El gráfico permite explorar los registros de forma interactiva. Podemos observar si aparecen conexiones con valores muy distintos al resto y consultar sus características.
+**Limitación temporal:** el dataset no contiene una fecha y hora real para cada conexión. Por tanto, no podemos representar una evolución cronológica fiable de una métrica. Este gráfico cumple la parte interactiva, pero no sustituye a una serie temporal real. No utilizamos el número de fila como si fuera una fecha porque podría llevar a una interpretación incorrecta.
+
+# Interpretación desde la Administración de Sistemas
+
+Después de realizar los cálculos y las visualizaciones, podemos relacionar los resultados con algunas tareas habituales de un administrador de sistemas.
+
+## Revisar los protocolos
+
+El análisis por protocolo muestra diferencias en el porcentaje de conexiones anómalas. ICMP presenta un porcentaje elevado en este conjunto, por lo que sería interesante revisar el uso que se hace de este protocolo y comprobar si la actividad es esperada.
+Esto no significa que haya que bloquear ICMP por completo. Este protocolo también se utiliza para diagnóstico de red, por ejemplo mediante herramientas como `ping`.
+
+## Revisar los servicios
+
+La tabla dinámica permite observar qué servicios tienen más registros anómalos. Los servicios con más actividad sospechosa pueden revisarse para comprobar si están habilitados, si son necesarios y si tienen una configuración adecuada.
+Un administrador podría:
+
+- Deshabilitar servicios que no se utilicen.
+- Revisar los puertos asociados a servicios expuestos.
+- Comprobar los registros del servidor.
+- Restringir el acceso a servicios que solo deban utilizarse desde redes internas.
+
+## Investigar volúmenes de datos elevados
+
+Una conexión con muchos bytes transferidos puede ser normal, por ejemplo durante una descarga o una copia de seguridad. Sin embargo, también podría justificar una revisión si no corresponde con la actividad habitual.
+Por eso, los registros seleccionados con `loc()` deben utilizarse como punto de partida para investigar, no como una lista automática de ataques confirmados.
+
+## Revisar errores y accesos
+
+Las tasas de error y los intentos fallidos de inicio de sesión pueden ayudar a localizar problemas de conectividad o accesos que conviene revisar.
+Entre las acciones posibles están comprobar los registros de autenticación, verificar el estado de los servicios y revisar las reglas del firewall.
+
+## Medidas básicas que proponemos
+
+A partir del análisis, proponemos algunas medidas sencillas:
+
+1. Mantener actualizados los sistemas operativos y los servicios de red.
+2. Desactivar servicios y puertos que no sean necesarios.
+3. Revisar los intentos fallidos de autenticación y establecer políticas de contraseñas adecuadas.
+4. Monitorizar el tráfico de los protocolos y servicios más utilizados.
+5. Configurar reglas de firewall acordes con las necesidades de la red.
+6. Utilizar herramientas IDS/IPS para ayudar a detectar actividad sospechosa.
+Estas medidas son recomendaciones generales. En una red real habría que adaptarlas a la infraestructura y comprobar su efecto antes de aplicarlas.
+
+# Conclusiones
+
+El análisis ha permitido estudiar un conjunto de conexiones de red y comparar los registros clasificados como normales y anómalos.
+Con Pandas hemos cargado los archivos, comprobado su estructura, revisado valores nulos y duplicados, creado una nueva variable y realizado diferentes consultas. También hemos practicado operaciones importantes como `concat()`, `groupby()`, `pivot_table()`, `loc()` e `iloc()`.
+Los resultados muestran diferencias entre protocolos y servicios. En particular, ICMP presenta una proporción elevada de conexiones anómalas en este conjunto, y algunos servicios acumulan un número importante de registros de esa categoría.
+Los gráficos facilitan la interpretación de las tablas y permiten localizar patrones que podrían ser interesantes para un administrador de sistemas.
+Como propuestas de mejora, consideramos importante mantener los servicios actualizados, revisar las reglas del firewall, controlar los accesos y utilizar herramientas de monitorización y detección de intrusiones (IDS/IPS).
+
+## Limitaciones del análisis
+
+Hay que tener en cuenta algunas limitaciones:
+
+- Los datos pertenecen a un conjunto preparado para estudiar la detección de intrusiones y no representan necesariamente el tráfico actual de una red real.
+- El archivo de prueba no tiene la etiqueta `class`, por lo que no podemos clasificar directamente sus conexiones como normales o anómalas.
+- Hemos agrupado todas las etiquetas distintas de `normal` bajo una sola categoría para simplificar el trabajo.
+- No hay una fecha y hora real por conexión, por lo que no podemos estudiar la evolución temporal.
+- Una conexión marcada como anómala no debe considerarse automáticamente un ataque confirmado.
+Estas limitaciones son importantes para no sacar conclusiones que vayan más allá de lo que los datos permiten.
+
+# Fuentes consultadas
+
+- [Dataset Network Intrusion Detection - Kaggle](https://www.kaggle.com/datasets/sampadab17/network-intrusion-detection)
+- [Documentación de Pandas](https://pandas.pydata.org/docs/)
+- [Documentación de Matplotlib](https://matplotlib.org/stable/)
+- [Documentación de Seaborn](https://seaborn.pydata.org/)
+- [Documentación de Plotly](https://plotly.com/python/)
+- [Documentación de Quarto](https://quarto.org/docs/)
+
+

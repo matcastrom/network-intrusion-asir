@@ -1,0 +1,10 @@
+# Entorno virtual de Python
+.venv/
+venv/
+# Archivos temporales de Quarto y Python
+.quarto/
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+#Data, porque la licencia no permite subirla
+data/*.csv
