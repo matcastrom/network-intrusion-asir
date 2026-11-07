@@ -30,15 +30,24 @@ network_intrusion_asir/
 
 Necesitas tener Python y Quarto instalados. Con la terminal abierta en esta carpeta, crea y activa un entorno virtual (recomendado):
 
+**En Linux:**
+
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
 ```
 
-En Windows, activa el entorno con:
+**En Windows (PowerShell):**
 
 ```powershell
-.venv\Scripts\activate
+py -m venv .venv
+.\.venv\Scripts\Activate.ps1
+```
+
+Si PowerShell bloquea la activación, ejecuta antes:
+
+```powershell
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
 ```
 
 Instala las librerías del proyecto usando el archivo `requirements.txt`:
@@ -47,11 +56,13 @@ Instala las librerías del proyecto usando el archivo `requirements.txt`:
 python -m pip install -r requirements.txt
 ```
 
-Quarto se instala por separado desde https://quarto.org/docs/get-started/ . Comprueba que está disponible con `quarto --version`.
+En Linux, si el comando `python` no está disponible, utiliza `python3`.
+
+Quarto se instala por separado desde https://quarto.org/docs/get-started/. Comprueba que está disponible con `quarto --version`.
 
 ## 3. Generar el informe
 
-Ejecuta:
+Desde la carpeta del proyecto, ejecuta:
 
 ```bash
 quarto render index.qmd
