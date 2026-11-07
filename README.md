@@ -1,6 +1,6 @@
 # Trabajo de Pandas – 2.º ASIR
 
-El informe completo está en `index.qmd`. No se necesita un archivo `_quarto.yml`: las opciones básicas de presentación están al principio del propio QMD.
+El informe completo está en `index.qmd`.
 
 ## 1. Preparar los datos
 
